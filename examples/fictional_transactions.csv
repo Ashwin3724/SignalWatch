@@ -1,0 +1,6 @@
+transaction_id,amount,hour,account_age_days,prior_24h_count,new_device,country_mismatch,merchant_category
+DEMO-001,45.90,13,560,2,0,0,grocery
+DEMO-002,240.00,2,18,6,1,1,digital
+DEMO-003,79.15,18,1000,1,0,0,retail
+DEMO-004,410.00,4,30,5,1,0,travel
+DEMO-005,19.50,9,350,2,0,1,digital
