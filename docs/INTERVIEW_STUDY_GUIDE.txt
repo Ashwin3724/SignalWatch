@@ -1,0 +1,116 @@
+SIGNALWATCH — BEGINNER INTERVIEW STUDY GUIDE
+
+This guide describes the actual AI-assisted SignalWatch codebase. It is a learning tool, not evidence that you independently wrote the application. Run it, read its code, conduct your own tests and make your own changes before claiming a contribution. The data, labels and scores are invented; this is not a real fraud detector.
+
+1. THE PROJECT IN PLAIN LANGUAGE
+
+SignalWatch simulates a fraud-review queue. It generates fictional transactions and labels, trains two supervised ML models, compares them on a validation period, chooses a score cutoff using validation data, and shows what happens on later synthetic transactions. A user can move the cutoff and observe review workload, precision, recall and missed positive labels. There is also a per-row score-sensitivity inspection and a fictional CSV scoring feature.
+
+It never automatically blocks a payment. It should never be used to assess actual people or payments. A reviewer label in the app is simulated, not the result of a real investigation.
+
+2. FOUNDATIONS: SUPERVISED LEARNING
+
+Machine learning is a way to fit a mathematical model to patterns in data. In supervised learning, each training example has inputs (features) and an expected output (label). The model adjusts parameters or decision rules so its outputs are useful on examples not used during fitting.
+
+Here the inputs include amount, hour, simulated account age, prior count, new-device flag, country mismatch and merchant category. The label is is_fraud, created by an invented random mechanism. The label and timestamp are not model inputs. Timestamp is used to sort the records into chronological periods.
+
+A classifier predicts a category. This is binary classification: positive vs negative. The model produces a score between 0 and 1. A score can resemble a probability, but this project has no calibration step and its score must not be interpreted as a verified real-world probability.
+
+Training = fitting model parameters or tree structure. Inference = using the fitted model on a new feature row. The project trains logistic regression and random forest on synthetic data locally; it does not call an LLM.
+
+3. DATA, TIME AND LEAKAGE
+
+The generator creates 9,000 records using seed 1729. A pseudorandom seed makes the simulation repeatable within a compatible environment. Records are sorted by their timestamp; the earliest 60% train, the next 20% validate, and the most recent 20% test.
+
+Why not shuffle randomly? In actual fraud work the future should not influence past predictions. A time split is closer to testing performance on later events. It does not automatically solve delayed labels, repeated customers, fraud rings, training-set contamination, or every form of leakage.
+
+Data leakage means information unavailable at decision time accidentally influences training or evaluation. Example: using the final investigation verdict as an input at the time of the transaction. Here the label is excluded from FEATURES, and preprocessing is fitted in a pipeline using only training rows. The validation split selects the model and cutoff. Test records do not select the model or cutoff; however the test outputs were inspected during development. Therefore the test is not a pristine independent scientific benchmark.
+
+The field prior_24h_count is generated directly, not calculated from authentic past activity. It must not be described as a production event-history pipeline. Read app/data.py and app/ml.py to see the distinction.
+
+4. THE TWO MODELS
+
+Logistic regression: computes a weighted sum of features and applies a logistic function to produce a score. Numeric features are standardized, and the category is one-hot encoded. Standardization rescales numeric variables using training data; one-hot encoding represents a category with indicator columns. Both transformations live inside the scikit-learn pipeline.
+
+Random forest: combines many decision trees. Each tree learns a sequence of split rules. Averaging outputs can reduce variation compared with a single tree. A forest may capture interactions and nonlinearities, but can still overfit, produce poorly calibrated scores, and inherit data quality problems.
+
+The model with better validation average precision is chosen. Average precision (AP) summarizes a precision-recall ranking curve; it is not the same as accuracy or precision at one cutoff. Neither model is guaranteed to win on other data.
+
+5. IMBALANCE AND THE CONFUSION MATRIX
+
+If positives are rare, predicting "negative" for every transaction may produce high accuracy but catch nothing. Use a confusion matrix:
+
+TP: flagged and positive label.
+FP: flagged and negative label (unnecessary review in this simulation).
+FN: not flagged but positive label (missed positive).
+TN: not flagged and negative label.
+
+Precision = TP / (TP + FP). Of flagged items, what fraction were positive?
+Recall = TP / (TP + FN). Of positive items, what fraction were flagged?
+Review rate = (TP + FP) / all items.
+
+Example only: 8 TP, 12 FP, 32 FN, 948 TN out of 1,000 records. Precision = 8/20 = 40%; recall = 8/40 = 20%; review rate = 20/1000 = 2%. These are made-up teaching values, not SignalWatch results. If no items are flagged, precision has a zero denominator and is undefined.
+
+6. CUTOFFS AND CAPACITY
+
+A threshold turns a score into a review decision: flag if score >= cutoff. Lowering the threshold generally flags more rows and may catch more positives while increasing workload; precision need not move monotonically. SignalWatch selects the score at the 5% rank in validation. Ties may flag more than 5%, and a different score distribution in the test period can change workload. This is threshold-based review, not a guarantee of reviewing exactly 5% on every future batch.
+
+Moving the slider while watching test outcomes is exploratory. If you tune a threshold using those outcomes and then report them as an independent test, the estimate is biased. Choose the policy on validation data and use a genuinely untouched future dataset for final evaluation.
+
+7. SCORE INSPECTION IS NOT CAUSAL EXPLANATION
+
+For a selected transaction, the app replaces one feature at a time with a training-set reference: numeric median or categorical mode. It recomputes the model score. Displayed difference = original score minus the score with that feature replaced. A positive value means the original value yielded a higher model score relative to that specific replacement.
+
+These differences are model sensitivities, not SHAP values, causal effects, definitive reasons for fraud, or proof that a feature is fair. Features interact, and changing one while holding the others fixed may make an unrealistic combination. The method uses training references, not test-set medians.
+
+8. ARCHITECTURE AND CODE
+
+run.py starts Uvicorn on loopback after creating a virtual environment and installing packages on the first run. FastAPI serves the HTML/JS dashboard and API. app/data.py generates data and validates uploaded CSVs. app/ml.py trains preprocessing and models, chooses the validation cutoff, computes metrics and performs reference replacement. app/main.py exposes report, holdout, upload and explanation endpoints. tests/ covers splitting, metrics, input validation and API behavior.
+
+CSV inputs are scored locally with the synthetic model. Uploaded labels are ignored. The UI shows only the top 25 uploaded rows. The holdout metric cards remain about the built-in synthetic test, not uploaded CSV performance. Multipart processing may create temporary files. Do not upload sensitive data.
+
+9. EVALUATION AND SAFETY
+
+Use a dataset with representative, properly licensed examples and labels that reflect what is knowable at scoring time. Separate earlier training, intermediate validation and later test periods. Measure AP, precision/recall at a realistic capacity, workload, latency, errors and potentially calibrated probabilities. Review costs and disparities across relevant groups where lawful and appropriate. Consider delayed and disputed labels, feedback loops and drift.
+
+The current simulator does not solve any of those real-world operational problems. It is not a fair, calibrated, monitored or production-ready fraud detection system. Its synthetic generator changes feature distributions slightly in the final period, but this is not an empirical simulation of real drift.
+
+10. INTERVIEW QUESTIONS — ANSWER IN YOUR OWN WORDS
+
+Q1: What does this application do? A: It trains on invented transactions, ranks them for simulated review and exposes the precision/recall/workload trade-off.
+Q2: What type of ML is used? A: Supervised binary classification with a synthetic label; logistic regression and random forest are compared.
+Q3: Why is accuracy misleading? A: With rare positives, always predicting negative can achieve high accuracy and zero recall.
+Q4: What is precision? A: The fraction of flagged rows that have positive labels.
+Q5: What is recall? A: The fraction of all positive labels that were flagged.
+Q6: Why a chronological split? A: To evaluate later examples using only earlier data; it reduces some forms of look-ahead leakage but is not sufficient by itself.
+Q7: How are the model and cutoff selected? A: Model by validation AP; cutoff by validation score at the 5% review rank, allowing ties.
+Q8: Is the cutoff guaranteed to yield 5% test workload? A: No; ties and distribution changes can alter it.
+Q9: What is AP? A: A ranking summary of the precision-recall curve, not threshold-specific precision.
+Q10: Is the score calibrated? A: No calibration stage is implemented; do not claim a verified probability.
+Q11: How do you avoid preprocessing leakage? A: Fit the scaler and one-hot encoder inside the training pipeline, not on the full dataset.
+Q12: Does the explanation prove a transaction is fraudulent? A: No. It compares model score against one reference replacement and is neither causal nor SHAP.
+Q13: Was a real bank dataset used? A: No; all training and test data are generated from invented rules.
+Q14: Can this system block real transactions? A: No. It is an educational simulator, not suitable for real decisions.
+Q15: What would you improve first? A: Obtain appropriate data, establish a leakage-safe evaluation and investigate failure patterns before claiming performance improvements.
+Q16: Did you write all the code yourself? A: Explain honestly that the initial code was AI-assisted; describe precisely what you personally studied, changed and tested.
+
+11. PRACTICE EXERCISES
+
+A. Read app/data.py and list all model inputs. Find the line creating labels; explain why label generation is a simulation rather than evidence about fraud.
+B. Draw train/validation/test boundaries and identify exactly which data fits preprocessing, chooses the model, selects the cutoff and measures metrics.
+C. Calculate TP, FP, FN, TN, precision and recall for a small made-up example; verify your math using app/ml.py metrics().
+D. Move the cutoff and explain why the review count changes. Reset and compare validation vs test workload. Do not call slider-tuned test numbers independent.
+E. Inspect a record and manually describe what replacing one feature with its median means.
+F. Add a test for a malformed CSV field, run pytest, and explain what it verifies and does not verify.
+G. Design a held-out evaluation for a legitimate research dataset and check its license before using it.
+
+12. NOTEBOOKLM PROMPTS
+
+Upload this guide plus sanitized code files; never upload secrets or real financial data. Try:
+- "Explain supervised learning and class imbalance as if I am new to AI, using SignalWatch examples."
+- "Trace a synthetic transaction from generation through model fitting, validation cutoff, test evaluation and dashboard."
+- "Quiz me one question at a time about precision, recall, AP and data leakage; correct my answers."
+- "Compare a score-replacement sensitivity with a causal explanation and SHAP, without implying SignalWatch implements SHAP."
+- "Challenge my CV claims. Distinguish what this AI-assisted demo implements from what it does not."
+
+Further reading: scikit-learn precision–recall https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html ; leakage guidance https://scikit-learn.org/stable/common_pitfalls.html ; Fraud Detection Handbook https://fraud-detection-handbook.github.io/fraud-detection-handbook/ .
