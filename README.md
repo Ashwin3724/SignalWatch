@@ -129,6 +129,3 @@ Suggested study topics: supervised learning; class imbalance; precision/recall; 
 
 Project source and the bundled synthetic example: MIT; see `LICENSE`. Dependencies have their own licenses.
 
-## Interview study guide
-
-A beginner-friendly project and interview guide is included at `docs/INTERVIEW_STUDY_GUIDE.txt`. It can also be uploaded to NotebookLM; do not upload secrets or sensitive documents.
