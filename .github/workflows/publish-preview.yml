@@ -1,0 +1,24 @@
+name: Publish project preview
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-preview.yml']
+permissions:
+  contents: write
+jobs:
+  restore-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore and commit the preview image
+        shell: bash
+        run: |
+          python3 restore_assets.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f docs/screenshot.png
+          if ! git diff --cached --quiet; then
+            git commit -m 'Add project preview image'
+            git push origin HEAD:main
+          fi
