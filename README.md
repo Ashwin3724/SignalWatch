@@ -1,6 +1,7 @@
 # SignalWatch — Fraud Review Lab
 
-Preview image is included in encoded form; run `python restore_assets.py` to restore `docs/screenshot.png` locally.
+![SignalWatch application screenshot](docs/screenshot.png)
+
 A local, educational **transaction review simulator** that trains a supervised ML model on invented data. Explore the trade-off between review capacity, precision and recall with a usable dashboard, chronological evaluation, a review queue, and per-transaction score-sensitivity inspection.
 
 > **Synthetic only.** This is not a real fraud detector. The dataset, features and labels are invented. Do not upload real customer or financial data or use the model to approve, decline, investigate, or make decisions about transactions or people. There is no evidence of real-world accuracy, calibration, business value or regulatory suitability.
